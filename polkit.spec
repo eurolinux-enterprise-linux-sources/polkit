@@ -1,7 +1,7 @@
 Summary: PolicyKit Authorization Framework
 Name: polkit
 Version: 0.96
-Release: 2%{?dist}.1
+Release: 5%{?dist}
 License: LGPLv2+
 URL: http://www.freedesktop.org/wiki/Software/PolicyKit
 Source0: http://hal.freedesktop.org/releases/%{name}-%{version}.tar.gz
@@ -31,6 +31,10 @@ Patch12: 0003-Use-polkit_unix_process_get_uid-to-get-the-owner-of-.patch
 Patch13: 0004-pkexec-Avoid-TOCTTOU-problems-with-parent-process.patch
 Patch14: 0005-Bug-26982-pkexec-information-disclosure-vulnerabilit.patch
 Patch15: 0006-Bug-29051-Configuration-reload-on-every-query.patch
+
+# Backported 52c927893a2ab135462b616c2e00fec377da9885 by Colin Walters
+# <walters@verbum.org>, yet to be committed upstream.
+Patch16: polkit-0.96-CVE-2013-4288.patch
 
 
 %description
@@ -81,6 +85,7 @@ Roles and default policy for desktop usage.
 %patch13 -p1
 %patch14 -p1
 %patch15 -p1
+%patch16 -p1
 
 %build
 %configure --enable-gtk-doc --disable-static --libexecdir=%{_libexecdir}/polkit-1 --enable-examples --disable-introspection
@@ -208,9 +213,17 @@ rm -rf $RPM_BUILD_ROOT
 %{_datadir}/gtk-doc/html/*
 
 %changelog
-* Mon Apr 11 2011 David Zeuthen <davidz@redhat.com> - 0.96-2%{?dist}.1
+* Tue Sep 17 2013 Miloslav Trmač <mitr@redhat.com> - 0.96-5
+- Actually apply the patch, and modify it to apply to 0.96
+- Resolves: #1006262
+
+* Fri Sep 13 2013 Jan Lieskovsky <jlieskov@redhat.com> - 0.96-4%{?dist}
+- Include fix for CVE-2013-4288
+- Resolves: #1006262
+
+* Mon Apr 11 2011 David Zeuthen <davidz@redhat.com> - 0.96-3%{?dist}
 - Include fixes for CVE-2011-1485
-- Resolves: #692941
+- Resolves: #692942
 
 * Mon Jun 21 2010 Matthias Clasen <mclasen@redhat.com> - 0.96-2
 - Fix a multilib problem
