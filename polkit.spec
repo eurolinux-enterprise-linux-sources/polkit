@@ -1,7 +1,7 @@
 Summary: PolicyKit Authorization Framework
 Name: polkit
 Version: 0.96
-Release: 7%{?dist}
+Release: 11%{?dist}
 License: LGPLv2+
 URL: http://www.freedesktop.org/wiki/Software/PolicyKit
 Source0: http://hal.freedesktop.org/releases/%{name}-%{version}.tar.gz
@@ -16,6 +16,7 @@ BuildRequires: intltool
 
 Requires: ConsoleKit
 Requires: dbus
+Requires(preun,postun): dbus, gawk
 
 Obsoletes: PolicyKit <= 0.10
 Provides: PolicyKit = 0.11
@@ -172,9 +173,30 @@ EOF
 %clean
 rm -rf $RPM_BUILD_ROOT
 
+%preun
+if [ "$1" -eq 0 ] ; then
+    pid=$(dbus-send --system --dest=org.freedesktop.DBus --print-reply \
+        /org/freedesktop/DBus org.freedesktop.DBus.GetConnectionUnixProcessID \
+        string:org.freedesktop.PolicyKit1 2>/dev/null \
+        | awk '$1 == "uint32" { print $2 }')
+    if [ -n "$pid" ]; then
+        kill "$pid" 2>/dev/null || :
+    fi
+fi
+
 %post -p /sbin/ldconfig
 
-%postun -p /sbin/ldconfig
+%postun
+/sbin/ldconfig
+if [ "$1" -ge 1 ] ; then
+    pid=$(dbus-send --system --dest=org.freedesktop.DBus --print-reply \
+        /org/freedesktop/DBus org.freedesktop.DBus.GetConnectionUnixProcessID \
+        string:org.freedesktop.PolicyKit1 2>/dev/null \
+        | awk '$1 == "uint32" { print $2 }')
+    if [ -n "$pid" ]; then
+        kill "$pid" 2>/dev/null || :
+    fi
+fi
 
 %pre desktop-policy
 /usr/sbin/groupadd -r desktop_admin_r 2> /dev/null || :
@@ -229,6 +251,22 @@ rm -rf $RPM_BUILD_ROOT
 %{_datadir}/gtk-doc/html/*
 
 %changelog
+* Sat Mar 7 2015 Miloslav Trmač <mitr@redhat.com> - 0.96-11
+- Gracefully handle race conditions and other failures to kill polkitd
+  Related: #1115649
+
+* Wed Mar 4 2015 Miloslav Trmač <mitr@redhat.com> - 0.96-10
+- Fix scriptlet failure when polkitd is not running
+  Related: #1115649
+
+* Tue Mar 3 2015 Miloslav Trmač <mitr@redhat.com> - 0.96-9
+- Restart polkitd on package upgrade or uninstallation
+  Resolves: #1115649
+
+* Fri Feb 20 2015 Miloslav Trmač <mitr@redhat.com> - 0.96-8
+- Fix text in (pkcheck --help)
+  Resolves: #1130156
+
 * Wed Aug 27 2014 Miloslav Trmač <mitr@redhat.com> - 0.96-7
 - Fix a crash on failure to read a command line of a process
   Resolves: #1132830
