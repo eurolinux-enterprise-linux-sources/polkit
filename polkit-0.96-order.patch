@@ -1,0 +1,65 @@
+diff -up polkit-0.96/src/polkitbackend/polkitbackendlocalauthorizationstore.c.order polkit-0.96/src/polkitbackend/polkitbackendlocalauthorizationstore.c
+--- polkit-0.96/src/polkitbackend/polkitbackendlocalauthorizationstore.c.order	2014-06-10 19:14:56.973001428 +0200
++++ polkit-0.96/src/polkitbackend/polkitbackendlocalauthorizationstore.c	2014-06-10 19:15:16.798000003 +0200
+@@ -529,6 +529,29 @@ polkit_backend_local_authorization_store
+   return store;
+ }
+ 
++static gint
++compare_basename (gconstpointer a_, gconstpointer b_)
++{
++  const GFile *a, *b;
++  gchar *a_basename;
++  gchar *b_basename;
++  gint ret;
++
++  a = a_;
++  b = b_;
++  /* Casting away constness, should be safe as long as the result of
++     g_file_get_basename() doesn't change while the sorting is going on. */
++  a_basename = g_file_get_basename ((GFile *)a);
++  b_basename = g_file_get_basename ((GFile *)b);
++
++  ret = g_strcmp0 (a_basename, b_basename);
++
++  g_free (a_basename);
++  g_free (b_basename);
++
++  return ret;
++}
++
+ static void
+ polkit_backend_local_authorization_store_purge (PolkitBackendLocalAuthorizationStore *store)
+ {
+@@ -597,7 +620,13 @@ polkit_backend_local_authorization_store
+       goto out;
+     }
+ 
+-  /* process files; highest priority comes first */
++  /* Warning: This ordering is undocumented and must not be relied upon; use
++     the documented ordering of subdirectories instead.  It's here only to help
++     users who rely on a tested but ambiguous configuration while using a
++     single release of polkit.  The basename ordering may change without
++     notice. */
++  files = g_list_sort (files, compare_basename);
++
+   for (l = files; l != NULL; l = l->next)
+     {
+       GFile *file = G_FILE (l->data);
+@@ -647,14 +676,14 @@ polkit_backend_local_authorization_store
+             }
+           g_strfreev (groups);
+ 
+-          store->priv->authorizations = g_list_reverse (store->priv->authorizations);
+-
+           g_key_file_free (key_file);
+         }
+ 
+       g_free (filename);
+     }
+ 
++  store->priv->authorizations = g_list_reverse (store->priv->authorizations);
++
+   store->priv->has_data = TRUE;
+ 
+  out:

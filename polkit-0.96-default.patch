@@ -1,0 +1,312 @@
+diff -up polkit-0.96/docs/man/pklocalauthority.xml.default polkit-0.96/docs/man/pklocalauthority.xml
+--- polkit-0.96/docs/man/pklocalauthority.xml.default	2014-06-10 17:32:41.846998749 +0200
++++ polkit-0.96/docs/man/pklocalauthority.xml	2014-06-10 17:32:12.454000597 +0200
+@@ -208,7 +208,9 @@
+             A semi-colon separated list of globs to match identities. Each glob
+             should start with <literal>unix-user:</literal> or
+             <literal>unix-group:</literal> to specify whether to match on a
+-            UNIX user name or a UNIX group name.
++            UNIX user name or a UNIX group name. Finally, an entry 
++            "<literal>default</literal>" (with no prefix) can be used to
++            specify the default match.
+           </para>
+         </listitem>
+       </varlistentry>
+@@ -355,15 +357,23 @@
+       When the list of authorization entries has been calculated, the
+       authorization check can be made. First, the user of the Subject
+       is determined and the groups that the user belongs are looked
+-      up. For each group identity, the authorization entries are
+-      consulted in order. If the authorization check matches the data
+-      from the authorization check, then the authorization result
+-      from <emphasis>RequireAny</emphasis>, <emphasis>RequireInactive</emphasis>
+-      or <emphasis>RequireActive</emphasis> is used
++      up.
++    </para>
++    <para>
++      Then, authorization entries that include the "<literal>default</literal>"
++      field value in the <emphasis>Identity</emphasis> field are consulted in
++      order.  If the authorization entry matches the data from the
++      authorization check, then the authorization result from
++      <emphasis>RequireAny</emphasis>, <emphasis>RequireInactive</emphasis> or
++      <emphasis>RequireActive</emphasis> is used
+       and <emphasis>ReturnValue</emphasis> is added to the
+       authorization result.
+     </para>
+     <para>
++      For each group identity, all authorization entries that contain a
++      matching group entry are again consulted in the same manner.
++    </para>
++    <para>
+       Finally, the authorization entries are consulted using the user
+       identity in the same manner.
+     </para>
+diff -up polkit-0.96/src/polkitbackend/polkitbackendlocalauthority.c.default polkit-0.96/src/polkitbackend/polkitbackendlocalauthority.c
+--- polkit-0.96/src/polkitbackend/polkitbackendlocalauthority.c.default	2014-06-10 16:48:48.802000007 +0200
++++ polkit-0.96/src/polkitbackend/polkitbackendlocalauthority.c	2014-06-10 17:01:42.258998065 +0200
+@@ -495,6 +495,48 @@ polkit_backend_local_authority_get_admin
+ 
+ /* ---------------------------------------------------------------------------------------------------- */
+ 
++static void
++update_ret_from_authorization_store (PolkitBackendLocalAuthority *authority,
++				     PolkitImplicitAuthorization *ret,
++				     PolkitIdentity *identity,
++				     gboolean subject_is_local,
++				     gboolean subject_is_active,
++				     const gchar *action_id,
++				     PolkitDetails *details,
++				     PolkitDetails *out_details)
++{
++  PolkitBackendLocalAuthorityPrivate *priv;
++  GList *l;
++
++  priv = POLKIT_BACKEND_LOCAL_AUTHORITY_GET_PRIVATE (authority);
++  for (l = priv->authorization_stores; l != NULL; l = l->next)
++    {
++      PolkitBackendLocalAuthorizationStore *store = POLKIT_BACKEND_LOCAL_AUTHORIZATION_STORE (l->data);
++      PolkitImplicitAuthorization ret_any;
++      PolkitImplicitAuthorization ret_inactive;
++      PolkitImplicitAuthorization ret_active;
++
++      if (polkit_backend_local_authorization_store_lookup (store, identity,
++							   action_id, details,
++							   &ret_any,
++							   &ret_inactive,
++							   &ret_active,
++							   out_details))
++	{
++	  PolkitImplicitAuthorization relevant_ret;
++
++	  if (subject_is_local && subject_is_active)
++	    relevant_ret = ret_active;
++	  else if (subject_is_local)
++	    relevant_ret = ret_inactive;
++	  else
++	    relevant_ret = ret_any;
++	  if (relevant_ret != POLKIT_IMPLICIT_AUTHORIZATION_UNKNOWN)
++	    *ret = relevant_ret;
++	}
++    }
++}
++
+ static PolkitImplicitAuthorization
+ polkit_backend_local_authority_check_authorization_sync (PolkitBackendInteractiveAuthority *authority,
+                                                          PolkitSubject                     *caller,
+@@ -508,18 +550,13 @@ polkit_backend_local_authority_check_aut
+                                                          PolkitDetails                     *out_details)
+ {
+   PolkitBackendLocalAuthority *local_authority;
+-  PolkitBackendLocalAuthorityPrivate *priv;
+   PolkitImplicitAuthorization ret;
+-  PolkitImplicitAuthorization ret_any;
+-  PolkitImplicitAuthorization ret_inactive;
+-  PolkitImplicitAuthorization ret_active;
+   GList *groups;
+-  GList *l, *ll;
++  GList *ll;
+ 
+   ret = implicit;
+ 
+   local_authority = POLKIT_BACKEND_LOCAL_AUTHORITY (authority);
+-  priv = POLKIT_BACKEND_LOCAL_AUTHORITY_GET_PRIVATE (local_authority);
+ 
+ #if 0
+   g_debug ("local: checking `%s' for subject `%s' (user `%s')",
+@@ -528,77 +565,28 @@ polkit_backend_local_authority_check_aut
+            polkit_identity_to_string (user_for_subject));
+ #endif
+ 
+-  /* First lookup for all groups the user belong to */
++  /* First check for default entries */
++  update_ret_from_authorization_store (local_authority, &ret, NULL,
++				       subject_is_local, subject_is_active,
++				       action_id, details, out_details);
++
++  /* Then lookup for all groups the user belong to */
+   groups = get_groups_for_user (user_for_subject);
+   for (ll = groups; ll != NULL; ll = ll->next)
+     {
+       PolkitIdentity *group = POLKIT_IDENTITY (ll->data);
+ 
+-      for (l = priv->authorization_stores; l != NULL; l = l->next)
+-        {
+-          PolkitBackendLocalAuthorizationStore *store = POLKIT_BACKEND_LOCAL_AUTHORIZATION_STORE (l->data);
+-
+-          if (polkit_backend_local_authorization_store_lookup (store,
+-                                                               group,
+-                                                               action_id,
+-                                                               details,
+-                                                               &ret_any,
+-                                                               &ret_inactive,
+-                                                               &ret_active,
+-                                                               out_details))
+-            {
+-              if (subject_is_local && subject_is_active)
+-                {
+-                  if (ret_active != POLKIT_IMPLICIT_AUTHORIZATION_UNKNOWN)
+-                    ret = ret_active;
+-                }
+-              else if (subject_is_local)
+-                {
+-                  if (ret_inactive != POLKIT_IMPLICIT_AUTHORIZATION_UNKNOWN)
+-                    ret = ret_inactive;
+-                }
+-              else
+-                {
+-                  if (ret_any != POLKIT_IMPLICIT_AUTHORIZATION_UNKNOWN)
+-                    ret = ret_any;
+-                }
+-            }
+-        }
++      update_ret_from_authorization_store (local_authority, &ret, group,
++                                          subject_is_local, subject_is_active,
++                                          action_id, details, out_details);
+     }
+   g_list_foreach (groups, (GFunc) g_object_unref, NULL);
+   g_list_free (groups);
+ 
+   /* Then do it for the user */
+-  for (l = priv->authorization_stores; l != NULL; l = l->next)
+-    {
+-      PolkitBackendLocalAuthorizationStore *store = POLKIT_BACKEND_LOCAL_AUTHORIZATION_STORE (l->data);
+-
+-      if (polkit_backend_local_authorization_store_lookup (store,
+-                                                           user_for_subject,
+-                                                           action_id,
+-                                                           details,
+-                                                           &ret_any,
+-                                                           &ret_inactive,
+-                                                           &ret_active,
+-                                                           out_details))
+-        {
+-          if (subject_is_local && subject_is_active)
+-            {
+-              if (ret_active != POLKIT_IMPLICIT_AUTHORIZATION_UNKNOWN)
+-                ret = ret_active;
+-            }
+-          else if (subject_is_local)
+-            {
+-              if (ret_inactive != POLKIT_IMPLICIT_AUTHORIZATION_UNKNOWN)
+-                ret = ret_inactive;
+-            }
+-          else
+-            {
+-              if (ret_any != POLKIT_IMPLICIT_AUTHORIZATION_UNKNOWN)
+-                ret = ret_any;
+-            }
+-        }
+-    }
++  update_ret_from_authorization_store (local_authority, &ret, user_for_subject,
++                                      subject_is_local, subject_is_active,
++                                      action_id, details, out_details);
+ 
+   return ret;
+ }
+diff -up polkit-0.96/src/polkitbackend/polkitbackendlocalauthorizationstore.c.default polkit-0.96/src/polkitbackend/polkitbackendlocalauthorizationstore.c
+--- polkit-0.96/src/polkitbackend/polkitbackendlocalauthorizationstore.c.default	2014-06-10 16:48:54.249955914 +0200
++++ polkit-0.96/src/polkitbackend/polkitbackendlocalauthorizationstore.c	2014-06-10 17:01:19.036004637 +0200
+@@ -74,6 +74,7 @@ typedef struct
+ {
+   gchar *id;
+ 
++  /* Identities with glob support; NULL entries mean "default identity" */
+   GList *identity_specs;
+   GList *action_specs;
+ 
+@@ -85,10 +86,18 @@ typedef struct
+ } LocalAuthorization;
+ 
+ static void
++free_pattern_if_nonnull (gpointer pattern, gpointer user_data)
++{
++  (void)user_data;
++  if (pattern != NULL)
++    g_pattern_spec_free (pattern);
++}
++
++static void
+ local_authorization_free (LocalAuthorization *authorization)
+ {
+   g_free (authorization->id);
+-  g_list_foreach (authorization->identity_specs, (GFunc) g_pattern_spec_free, NULL);
++  g_list_foreach (authorization->identity_specs, free_pattern_if_nonnull, NULL);
+   g_list_free (authorization->identity_specs);
+   g_list_foreach (authorization->action_specs, (GFunc) g_pattern_spec_free, NULL);
+   g_list_free (authorization->action_specs);
+@@ -135,8 +144,13 @@ local_authorization_new (GKeyFile      *
+     }
+   for (n = 0; identity_strings[n] != NULL; n++)
+     {
+-      authorization->identity_specs = g_list_prepend (authorization->identity_specs,
+-                                                      g_pattern_spec_new (identity_strings[n]));
++      /* "default" is a special case that doesn't match PolkitIdentity syntax */
++      if (strcmp (identity_strings[n], "default") == 0)
++        authorization->identity_specs = g_list_prepend (authorization->identity_specs,
++                                                        NULL);
++      else
++        authorization->identity_specs = g_list_prepend (authorization->identity_specs,
++                                                        g_pattern_spec_new (identity_strings[n]));
+     }
+ 
+   action_strings = g_key_file_get_string_list (key_file,
+@@ -651,7 +665,7 @@ polkit_backend_local_authorization_store
+ /**
+  * polkit_backend_local_authorization_store_lookup:
+  * @store: A #PolkitBackendLocalAuthorizationStore.
+- * @identity: The identity to check for.
++ * @identity: The identity to check for, or %NULL for "default".
+  * @action_id: The action id to check for.
+  * @details: Details for @action.
+  * @out_result_any: Return location for the result for any subjects if the look up matched.
+@@ -679,7 +693,7 @@ polkit_backend_local_authorization_store
+   gchar *identity_string;
+ 
+   g_return_val_if_fail (POLKIT_BACKEND_IS_LOCAL_AUTHORIZATION_STORE (store), FALSE);
+-  g_return_val_if_fail (POLKIT_IS_IDENTITY (identity), FALSE);
++  g_return_val_if_fail (identity == NULL || POLKIT_IS_IDENTITY (identity), FALSE);
+   g_return_val_if_fail (action_id != NULL, FALSE);
+   g_return_val_if_fail (POLKIT_IS_DETAILS (details), FALSE);
+   g_return_val_if_fail (out_result_any != NULL, FALSE);
+@@ -704,13 +718,25 @@ polkit_backend_local_authorization_store
+       if (ll == NULL)
+         continue;
+ 
+-      /* then match the identity */
+-      if (identity_string == NULL)
+-        identity_string = polkit_identity_to_string (identity);
+-      for (ll = authorization->identity_specs; ll != NULL; ll = ll->next)
++      if (identity == NULL)
++       {
++         for (ll = authorization->identity_specs; ll != NULL; ll = ll->next)
++           {
++             if (ll->data == NULL)
++               break;
++           }
++       }
++      else
+         {
+-          if (g_pattern_match_string ((GPatternSpec *) ll->data, identity_string))
+-            break;
++          /* then match the identity */
++          if (identity_string == NULL)
++            identity_string = polkit_identity_to_string (identity);
++          for (ll = authorization->identity_specs; ll != NULL; ll = ll->next)
++            {
++              if (ll->data != NULL
++                  && g_pattern_match_string ((GPatternSpec *) ll->data, identity_string))
++                break;
++            }
+         }
+       if (ll == NULL)
+         continue;
+@@ -738,7 +764,8 @@ polkit_backend_local_authorization_store
+       g_debug ("authorization with id `%s' matched action_id `%s' for identity `%s'",
+                authorization->id,
+                action_id,
+-               polkit_identity_to_string (identity));
++               identity != NULL
++	       ? polkit_identity_to_string (identity) : "default");
+ #endif
+     }
+ 

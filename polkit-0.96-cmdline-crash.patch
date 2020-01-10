@@ -1,0 +1,44 @@
+diff -ur polkit/src/polkitbackend/polkitbackendinteractiveauthority.c polkit-0.96/src/polkitbackend/polkitbackendinteractiveauthority.c
+--- polkit/src/polkitbackend/polkitbackendinteractiveauthority.c	2010-01-15 19:58:26.000000000 +0100
++++ polkit-0.96/src/polkitbackend/polkitbackendinteractiveauthority.c	2014-08-27 18:24:52.592155089 +0200
+@@ -406,7 +406,7 @@
+     }
+   else
+     {
+-      g_warning ("Unknown subject type passed to guess_program_name()");
++      g_warning ("Unknown subject type passed to _polkit_subject_get_cmdline()");
+       goto out;
+     }
+ 
+@@ -426,15 +426,21 @@
+       goto out;
+     }
+ 
+-  /* The kernel uses '\0' to separate arguments - replace those with a space. */
+-  for (n = 0; n < contents_len - 1; n++)
++  if (contents == NULL || contents_len == 0)
+     {
+-      if (contents[n] == '\0')
+-        contents[n] = ' ';
++      goto out;
++    }
++  else
++    {
++      /* The kernel uses '\0' to separate arguments - replace those with a space. */
++      for (n = 0; n < contents_len - 1; n++)
++        {
++          if (contents[n] == '\0')
++            contents[n] = ' ';
++        }
++      ret = g_strdup (contents);
++      g_strstrip (ret);
+     }
+-
+-  ret = g_strdup (contents);
+-  g_strstrip (ret);
+ 
+  out:
+   g_free (filename);
+Pouze v polkit-0.96/src/polkitbackend: polkitbackendinteractiveauthority.c.orig
+Pouze v polkit-0.96/src/programs: pkcheck.c.orig
+Pouze v polkit-0.96/src/programs: pkcheck.c.rej

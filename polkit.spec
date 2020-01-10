@@ -1,7 +1,7 @@
 Summary: PolicyKit Authorization Framework
 Name: polkit
 Version: 0.96
-Release: 5%{?dist}
+Release: 7%{?dist}
 License: LGPLv2+
 URL: http://www.freedesktop.org/wiki/Software/PolicyKit
 Source0: http://hal.freedesktop.org/releases/%{name}-%{version}.tar.gz
@@ -35,7 +35,17 @@ Patch15: 0006-Bug-29051-Configuration-reload-on-every-query.patch
 # Backported 52c927893a2ab135462b616c2e00fec377da9885 by Colin Walters
 # <walters@verbum.org>, yet to be committed upstream.
 Patch16: polkit-0.96-CVE-2013-4288.patch
-
+# Parts of http://bugs.freedesktop.org/show_bug.cgi?id=29936
+Patch17: polkit-0.96-help.patch
+# polkit-pkla-compat commits 158b21ecd4e0997ae01d0f7b528737dd7c39f470 ,
+# 6dc94f276aee05b163b5f8da51431dcc0877b874 and parts of
+# 4f65eb2df62cbc0c8eed68f402e14eab65cd1523 .
+Patch18: polkit-0.96-default.patch
+# polkit-pkla-compat commits e88fb4b733e0fd6b8cb22cdbd387e132b87ffdde
+# and a54bff567936c4bb21b728d8f85239e30ccb81ef .
+Patch19: polkit-0.96-order.patch
+# Part of b031cf007ff8ac08055a737d69e5d83a13e8ef7c
+Patch20: polkit-0.96-cmdline-crash.patch
 
 %description
 PolicyKit is a toolkit for defining and handling authorizations.
@@ -86,8 +96,14 @@ Roles and default policy for desktop usage.
 %patch14 -p1
 %patch15 -p1
 %patch16 -p1
+%patch17 -p1 -b .help
+%patch18 -p1 -b .default
+%patch19 -p1 -b .order
+%patch20 -p1 -b .cmdline-crash
 
 %build
+export CFLAGS='-fPIC %optflags'
+export LDFLAGS='-pie -Wl,-z,now -Wl,-z,relro'
 %configure --enable-gtk-doc --disable-static --libexecdir=%{_libexecdir}/polkit-1 --enable-examples --disable-introspection
 make
 
@@ -213,13 +229,30 @@ rm -rf $RPM_BUILD_ROOT
 %{_datadir}/gtk-doc/html/*
 
 %changelog
+* Wed Aug 27 2014 Miloslav Trmač <mitr@redhat.com> - 0.96-7
+- Fix a crash on failure to read a command line of a process
+  Resolves: #1132830
+
+* Tue Jun 10 2014 Miloslav Trmač <mitr@redhat.com> - 0.96-6
+- Use real --help text and error messages instead of showing a man page in
+  pkaction and pkcheck.  Fix description of (pkaction --action-id) in the man 
+  page.
+  Resolves: #628862
+- Add support for Identity=default in .pkla files
+  Resolves: #812684
+- Use a consistent order for .pkla files within a directory.  Based on a patch
+  by Jared Jennings <jared.jennings.ctr@eglin.af.mil>.
+  Resolves: #864613
+- Build using PIE and relro
+  Resolves: #927406
+
 * Tue Sep 17 2013 Miloslav Trmač <mitr@redhat.com> - 0.96-5
 - Actually apply the patch, and modify it to apply to 0.96
-- Resolves: #1006262
+- Resolves: #1006264
 
 * Fri Sep 13 2013 Jan Lieskovsky <jlieskov@redhat.com> - 0.96-4%{?dist}
 - Include fix for CVE-2013-4288
-- Resolves: #1006262
+- Resolves: #1006264
 
 * Mon Apr 11 2011 David Zeuthen <davidz@redhat.com> - 0.96-3%{?dist}
 - Include fixes for CVE-2011-1485

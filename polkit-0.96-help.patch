@@ -1,0 +1,328 @@
+diff -up polkit-0.96/configure.ac.help polkit-0.96/configure.ac
+diff -up polkit-0.96/docs/man/pkaction.xml.help polkit-0.96/docs/man/pkaction.xml
+--- polkit-0.96/docs/man/pkaction.xml.help	2014-06-10 15:37:27.820995579 +0200
++++ polkit-0.96/docs/man/pkaction.xml	2014-06-10 15:39:44.300994035 +0200
+@@ -56,7 +56,7 @@
+     <title>DESCRIPTION</title>
+     <para>
+       <command>pkaction</command> is used to obtain information about registered
+-      PolicyKit actions. If called with <option>--action-id</option> then all
++      PolicyKit actions. If called without <option>--action-id</option> then all
+       actions are displayed. Otherwise the action <replaceable>action</replaceable>.
+       If called without the <option>--verbose</option> option only the name
+       of the action is shown. Otherwise details about the actions are shown.
+diff -up polkit-0.96/po/POTFILES.in.help polkit-0.96/po/POTFILES.in
+--- polkit-0.96/po/POTFILES.in.help	2014-06-10 15:37:27.823995786 +0200
++++ polkit-0.96/po/POTFILES.in	2014-06-10 15:42:24.536992001 +0200
+@@ -4,4 +4,6 @@
+ actions/org.freedesktop.policykit.policy.in
+ src/examples/org.freedesktop.policykit.examples.pkexec.policy.in
+ src/polkitbackend/polkitbackendlocalauthority.c
++src/programs/pkaction.c
++src/programs/pkcheck.c
+ src/programs/pkexec-action-lookup.c
+diff -up polkit-0.96/src/programs/pkaction.c.help polkit-0.96/src/programs/pkaction.c
+--- polkit-0.96/src/programs/pkaction.c.help	2014-06-10 15:37:27.825995946 +0200
++++ polkit-0.96/src/programs/pkaction.c	2014-06-10 15:58:09.141000148 +0200
+@@ -24,26 +24,10 @@
+ #endif
+ 
+ #include <stdio.h>
++#include <glib/gi18n.h>
+ #include <polkit/polkit.h>
+ 
+ static void
+-usage (int argc, char *argv[])
+-{
+-  GError *error;
+-
+-  error = NULL;
+-  if (!g_spawn_command_line_sync ("man pkaction",
+-                                  NULL,
+-                                  NULL,
+-                                  NULL,
+-                                  &error))
+-    {
+-      g_printerr ("Cannot show manual page: %s\n", error->message);
+-      g_error_free (error);
+-    }
+-}
+-
+-static void
+ print_action (PolkitActionDescription *action,
+               gboolean                 opt_verbose)
+ {
+@@ -104,19 +88,35 @@ action_desc_compare_by_action_id_func (P
+ int
+ main (int argc, char *argv[])
+ {
+-  guint n;
+   guint ret;
+-  gchar *action_id;
+-  gboolean opt_show_help;
++  gchar *opt_action_id;
+   gboolean opt_show_version;
+   gboolean opt_verbose;
+   PolkitAuthority *authority;
++  GOptionEntry options[] =
++    {
++      {
++       "action-id", 'a', 0, G_OPTION_ARG_STRING, &opt_action_id,
++       N_("Only output information about ACTION"), N_("ACTION")
++      },
++      {
++       "verbose", 'v', 0, G_OPTION_ARG_NONE, &opt_verbose,
++       N_("Output detailed action information"), NULL
++      },
++      {
++       "version", 0, 0, G_OPTION_ARG_NONE, &opt_show_version,
++       N_("Show version"), NULL
++      },
++      { NULL, 0, 0, 0, NULL, NULL, NULL }
++    };
++  GOptionContext *context;
+   GList *l;
+   GList *actions;
+   PolkitActionDescription *description;
+   GError *error;
+ 
+-  action_id = NULL;
++  opt_action_id = NULL;
++  context = NULL;
+   authority = NULL;
+   actions = NULL;
+   description = NULL;
+@@ -124,43 +124,18 @@ main (int argc, char *argv[])
+ 
+   g_type_init ();
+ 
+-  opt_show_help = FALSE;
+   opt_show_version = FALSE;
+   opt_verbose = FALSE;
+-  for (n = 1; n < (guint) argc; n++)
+-    {
+-      if (g_strcmp0 (argv[n], "--help") == 0)
+-        {
+-          opt_show_help = TRUE;
+-        }
+-      else if (g_strcmp0 (argv[n], "--version") == 0)
+-        {
+-          opt_show_version = TRUE;
+-        }
+-      else if (g_strcmp0 (argv[n], "--action-id") == 0 || g_strcmp0 (argv[n], "-a") == 0)
+-        {
+-          n++;
+-          if (n >= (guint) argc)
+-            {
+-              usage (argc, argv);
+-              goto out;
+-            }
+-
+-          action_id = g_strdup (argv[n]);
+-        }
+-      else if (g_strcmp0 (argv[n], "--verbose") == 0 || g_strcmp0 (argv[n], "-v") == 0)
+-        {
+-          opt_verbose = TRUE;
+-        }
+-    }
+-
+-  if (opt_show_help)
++  error = NULL;
++  context = g_option_context_new (N_("[--action-id ACTION]"));
++  g_option_context_add_main_entries (context, options, GETTEXT_PACKAGE);
++  if (!g_option_context_parse (context, &argc, &argv, &error))
+     {
+-      usage (argc, argv);
+-      ret = 0;
++      g_printerr ("%s: %s\n", g_get_prgname (), error->message);
++      g_error_free (error);
+       goto out;
+     }
+-  else if (opt_show_version)
++  if (opt_show_version)
+     {
+       g_print ("pkaction version %s\n", PACKAGE_VERSION);
+       ret = 0;
+@@ -169,7 +144,6 @@ main (int argc, char *argv[])
+ 
+   authority = polkit_authority_get ();
+ 
+-  error = NULL;
+   actions = polkit_authority_enumerate_actions_sync (authority,
+                                                      NULL,      /* GCancellable */
+                                                      &error);
+@@ -180,7 +154,7 @@ main (int argc, char *argv[])
+       goto out;
+     }
+ 
+-  if (action_id != NULL)
++  if (opt_action_id != NULL)
+     {
+       for (l = actions; l != NULL; l = l->next)
+         {
+@@ -189,7 +163,7 @@ main (int argc, char *argv[])
+ 
+           id = polkit_action_description_get_action_id (action);
+ 
+-          if (g_strcmp0 (id, action_id) == 0)
++          if (g_strcmp0 (id, opt_action_id) == 0)
+             {
+               print_action (action, opt_verbose);
+               break;
+@@ -198,7 +172,7 @@ main (int argc, char *argv[])
+ 
+       if (l == NULL)
+         {
+-          g_printerr ("No action with action id %s\n", action_id);
++          g_printerr ("No action with action id %s\n", opt_action_id);
+           goto out;
+         }
+     }
+@@ -222,11 +196,13 @@ main (int argc, char *argv[])
+   if (description != NULL)
+     g_object_unref (description);
+ 
+-  g_free (action_id);
++  g_free (opt_action_id);
+ 
+   if (authority != NULL)
+     g_object_unref (authority);
+ 
++  g_option_context_free (context);
++
+   return ret;
+ }
+ 
+diff -up polkit-0.96/src/programs/pkexec.c.help polkit-0.96/src/programs/pkexec.c
+diff -up polkit-0.96/src/programs/pkcheck.c.help polkit-0.96/src/programs/pkcheck.c
+--- polkit-0.96/src/programs/pkcheck.c.help	2014-06-10 15:37:27.828996323 +0200
++++ polkit-0.96/src/programs/pkcheck.c	2014-06-10 15:58:48.981997151 +0200
+@@ -24,23 +24,29 @@
+ #endif
+ 
+ #include <stdio.h>
++#include <glib/gi18n.h>
+ #include <polkit/polkit.h>
+ 
+ static void
+-usage (int argc, char *argv[])
++help (void)
+ {
+-  GError *error;
+-
+-  error = NULL;
+-  if (!g_spawn_command_line_sync ("man pkcheck",
+-                                  NULL,
+-                                  NULL,
+-                                  NULL,
+-                                  &error))
+-    {
+-      g_printerr ("Cannot show manual page: %s\n", error->message);
+-      g_error_free (error);
+-    }
++  g_print (_("Usage:\n"
++"  pkcheck [OPTION...]\n"
++"\n"
++"Help Options:\n"
++"  -h, --help                         Show help options\n"
++"\n"
++"Application Options:\n"
++"  -a, --action-id=ACTION             Check authorization to perform ACTION\n"
++"  -u, --allow-user-interaction       Interact with the user if necessary\n"
++"  -d, --details=KEY VALUE            Add (KEY, VALUE) to information about the action\n"
++"  --enable-internal-agent            Use an internal authentication agent if necessary\n"
++"  --list-temp                        List temporary authorizations for current session\n"
++"  -p, --process=PID[,START_TIME]     Check authorization of specified process\n"
++"  --revoke-temp                      Revoke all temporary authorizations for current session\n"
++"  -s, --system-bus-name=BUS_NAME     Check authorization of owner of BUS_NAME\n"
++"  --version                          Show version\n"
++            "\n"));
+ }
+ 
+ static gchar *
+@@ -99,6 +105,7 @@ main (int argc, char *argv[])
+ 
+   opt_show_help = FALSE;
+   opt_show_version = FALSE;
++  g_set_prgname ("pkcheck");
+   for (n = 1; n < (guint) argc; n++)
+     {
+       if (g_strcmp0 (argv[n], "--help") == 0)
+@@ -118,7 +125,8 @@ main (int argc, char *argv[])
+           n++;
+           if (n >= (guint) argc)
+             {
+-              usage (argc, argv);
++	      g_printerr (_("%s: Argument expected after `%s'\n"),
++			  g_get_prgname (), "--process");
+               goto out;
+             }
+ 
+@@ -136,7 +144,8 @@ main (int argc, char *argv[])
+             }
+           else
+             {
+-              usage (argc, argv);
++	      g_printerr (_("%s: Invalid --process value `%s'\n"),
++			  g_get_prgname (), argv[n]);
+               goto out;
+             }
+         }
+@@ -145,7 +154,8 @@ main (int argc, char *argv[])
+           n++;
+           if (n >= (guint) argc)
+             {
+-              usage (argc, argv);
++	      g_printerr (_("%s: Argument expected after `%s'\n"),
++			  g_get_prgname (), "--system-bus-name");
+               goto out;
+             }
+ 
+@@ -156,7 +166,8 @@ main (int argc, char *argv[])
+           n++;
+           if (n >= (guint) argc)
+             {
+-              usage (argc, argv);
++	      g_printerr (_("%s: Argument expected after `%s'\n"),
++			  g_get_prgname (), "--action-id");
+               goto out;
+             }
+ 
+@@ -170,7 +181,8 @@ main (int argc, char *argv[])
+           n++;
+           if (n >= (guint) argc)
+             {
+-              usage (argc, argv);
++	      g_printerr (_("%s: Two arguments expected after `--detail'\n"),
++			  g_get_prgname ());
+               goto out;
+             }
+           key = argv[n];
+@@ -178,7 +190,8 @@ main (int argc, char *argv[])
+           n++;
+           if (n >= (guint) argc)
+             {
+-              usage (argc, argv);
++	      g_printerr (_("%s: Two arguments expected after `--detail'\n"),
++			  g_get_prgname ());
+               goto out;
+             }
+           value = argv[n];
+@@ -197,7 +210,7 @@ main (int argc, char *argv[])
+ 
+   if (opt_show_help)
+     {
+-      usage (argc, argv);
++      help ();
+       ret = 0;
+       goto out;
+     }
+@@ -210,7 +223,7 @@ main (int argc, char *argv[])
+ 
+   if (subject == NULL)
+     {
+-      usage (argc, argv);
++      g_printerr (_("%s: Subject not specified\n"), g_get_prgname ());
+       goto out;
+     }
+ 
