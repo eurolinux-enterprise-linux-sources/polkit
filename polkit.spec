@@ -1,7 +1,7 @@
 Summary: PolicyKit Authorization Framework
 Name: polkit
 Version: 0.96
-Release: 11%{?dist}
+Release: 11%{?dist}.1
 License: LGPLv2+
 URL: http://www.freedesktop.org/wiki/Software/PolicyKit
 Source0: http://hal.freedesktop.org/releases/%{name}-%{version}.tar.gz
@@ -47,6 +47,7 @@ Patch18: polkit-0.96-default.patch
 Patch19: polkit-0.96-order.patch
 # Part of b031cf007ff8ac08055a737d69e5d83a13e8ef7c
 Patch20: polkit-0.96-cmdline-crash.patch
+Patch21: polkit-0.96-CVE-2019-6133.patch
 
 %description
 PolicyKit is a toolkit for defining and handling authorizations.
@@ -101,6 +102,7 @@ Roles and default policy for desktop usage.
 %patch18 -p1 -b .default
 %patch19 -p1 -b .order
 %patch20 -p1 -b .cmdline-crash
+%patch21 -p1
 
 %build
 export CFLAGS='-fPIC %optflags'
@@ -251,6 +253,10 @@ fi
 %{_datadir}/gtk-doc/html/*
 
 %changelog
+* Thu Jan 24 2019 Jan Rybar <jrybar@redhat.com> - 0.96-11.el6_10.1
+- Fix of CVE-2019-6133, PID reuse via slow fork
+- Resolves: rhbz#1667310
+
 * Sat Mar 7 2015 Miloslav Trmač <mitr@redhat.com> - 0.96-11
 - Gracefully handle race conditions and other failures to kill polkitd
   Related: #1115649
