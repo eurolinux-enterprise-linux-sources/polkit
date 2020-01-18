@@ -6,7 +6,7 @@
 Summary: An authorization framework
 Name: polkit
 Version: 0.112
-Release: 22%{?dist}
+Release: 22%{?dist}.1
 License: LGPLv2+
 URL: http://www.freedesktop.org/wiki/Software/polkit
 Source0: http://www.freedesktop.org/software/polkit/releases/%{name}-%{version}.tar.gz
@@ -33,6 +33,7 @@ Patch11: polkit-0.112-CVE-2018-19788.patch
 Patch12: polkit-0.112-CVE-2019-6133.patch
 Patch13: polkit-0.112-allow-uid-of-1.patch
 Patch14: polkit-0.112-pkttyagent-tty-echo-off-on-fail.patch
+Patch15: polkit-0.112-sigttou-if-bg-job.patch
 
 Group: System Environment/Libraries
 BuildRequires: glib2-devel >= 2.30.0
@@ -115,6 +116,7 @@ Development documentation for polkit.
 %patch12 -p1
 %patch13 -p1
 %patch14 -p1
+%patch15 -p1
 
 %build
 %if 0%{?enable_autoreconf}
@@ -205,6 +207,10 @@ fi
 %{_datadir}/gtk-doc
 
 %changelog
+* Thu Jul 11 2019 Jan Rybar <jrybar@redhat.com> - 0.112-22.el7_7.1
+- pkttyagent: process stopped by SIGTTOU if run in background job
+- Resolves: rhbz#1730093
+
 * Thu Mar 21 2019 Jan Rybar <jrybar@redhat.com> - 0.112-22
 - pkttyagent: polkit-agent-helper-1 timeout leaves tty echo disabled
 - Resolves: rhbz#1325512
