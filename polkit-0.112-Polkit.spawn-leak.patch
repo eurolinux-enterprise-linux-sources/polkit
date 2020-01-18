@@ -1,0 +1,20 @@
+commit 1986e443b170240e9ce4a34726b7fa6c55b3601c
+Author: Miloslav Trmač <mitr@redhat.com>
+Date:   Sat Dec 7 04:21:10 2013 +0100
+
+    Fix a memory leak
+    
+    https://bugs.freedesktop.org/show_bug.cgi?id=72426
+
+diff --git a/src/polkitbackend/polkitbackendjsauthority.c b/src/polkitbackend/polkitbackendjsauthority.c
+index bc2fe22..c3885a9 100644
+--- a/src/polkitbackend/polkitbackendjsauthority.c
++++ b/src/polkitbackend/polkitbackendjsauthority.c
+@@ -1363,7 +1363,6 @@ js_polkit_spawn (JSContext  *cx,
+           goto out;
+ 	}
+       s = JS_EncodeString (cx, JSVAL_TO_STRING (elem_val));
+-      s = JS_EncodeString (cx, JSVAL_TO_STRING (elem_val));
+       argv[n] = g_strdup (s);
+       JS_free (cx, s);
+     }
