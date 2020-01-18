@@ -6,7 +6,7 @@
 Summary: An authorization framework
 Name: polkit
 Version: 0.112
-Release: 18%{?dist}
+Release: 18%{?dist}.1
 License: LGPLv2+
 URL: http://www.freedesktop.org/wiki/Software/polkit
 Source0: http://www.freedesktop.org/software/polkit/releases/%{name}-%{version}.tar.gz
@@ -29,6 +29,7 @@ Patch7: polkit-0.112-add-its-files.patch
 Patch8: polkit-0.112-spawning-zombie-processes.patch
 Patch9: polkit-0.112-bus-conn-msg-ssh.patch
 Patch10: polkit-0.112-pkttyagent-auth-errmsg-debug.patch
+Patch11: polkit-0.112-CVE-2019-6133.patch
 
 Group: System Environment/Libraries
 BuildRequires: glib2-devel >= 2.30.0
@@ -107,6 +108,7 @@ Development documentation for polkit.
 %patch8 -p1
 %patch9 -p1
 %patch10 -p1
+%patch11 -p1
 
 %build
 %if 0%{?enable_autoreconf}
@@ -197,6 +199,10 @@ fi
 %{_datadir}/gtk-doc
 
 %changelog
+* Tue Jan 22 2019 Jan Rybar <jrybar@redhat.com> - 0.112-18.el7_6.1
+- Fix of CVE-2019-6133, PID reuse via slow fork
+- Resolves: rhbz#1667311
+
 * Wed Aug 01 2018 Jan Rybar <jrybar@redhat.com> - 0.112-18
 - Error message about getting authority is too elaborate
 - Resolves: rhbz#1342855
