@@ -6,7 +6,7 @@
 Summary: An authorization framework
 Name: polkit
 Version: 0.112
-Release: 18%{?dist}.1
+Release: 22%{?dist}
 License: LGPLv2+
 URL: http://www.freedesktop.org/wiki/Software/polkit
 Source0: http://www.freedesktop.org/software/polkit/releases/%{name}-%{version}.tar.gz
@@ -29,7 +29,10 @@ Patch7: polkit-0.112-add-its-files.patch
 Patch8: polkit-0.112-spawning-zombie-processes.patch
 Patch9: polkit-0.112-bus-conn-msg-ssh.patch
 Patch10: polkit-0.112-pkttyagent-auth-errmsg-debug.patch
-Patch11: polkit-0.112-CVE-2019-6133.patch
+Patch11: polkit-0.112-CVE-2018-19788.patch
+Patch12: polkit-0.112-CVE-2019-6133.patch
+Patch13: polkit-0.112-allow-uid-of-1.patch
+Patch14: polkit-0.112-pkttyagent-tty-echo-off-on-fail.patch
 
 Group: System Environment/Libraries
 BuildRequires: glib2-devel >= 2.30.0
@@ -109,6 +112,9 @@ Development documentation for polkit.
 %patch9 -p1
 %patch10 -p1
 %patch11 -p1
+%patch12 -p1
+%patch13 -p1
+%patch14 -p1
 
 %build
 %if 0%{?enable_autoreconf}
@@ -199,9 +205,21 @@ fi
 %{_datadir}/gtk-doc
 
 %changelog
-* Tue Jan 22 2019 Jan Rybar <jrybar@redhat.com> - 0.112-18.el7_6.1
+* Thu Mar 21 2019 Jan Rybar <jrybar@redhat.com> - 0.112-22
+- pkttyagent: polkit-agent-helper-1 timeout leaves tty echo disabled
+- Resolves: rhbz#1325512
+
+* Wed Feb 06 2019 Jan Rybar <jrybar@redhat.com> - 0.112-21
+- Mitigation of regression caused by fix of CVE-2018-19788
+- Resolves: rhbz#1656377
+
+* Mon Jan 21 2019 Jan Rybar <jrybar@redhat.com> - 0.112-20
 - Fix of CVE-2019-6133, PID reuse via slow fork
-- Resolves: rhbz#1667311
+- Resolves: rhbz#1667312
+
+* Thu Dec 06 2018 Jan Rybar <jrybar@redhat.com> - 0.112-19
+- Fix of CVE-2018-19788, priv escalation with high UIDs
+- Resolves: rhbz#1656377
 
 * Wed Aug 01 2018 Jan Rybar <jrybar@redhat.com> - 0.112-18
 - Error message about getting authority is too elaborate

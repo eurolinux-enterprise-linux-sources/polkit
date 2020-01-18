@@ -1,0 +1,20 @@
+diff -up ./src/polkit/polkitunixprocess.c.ori ./src/polkit/polkitunixprocess.c
+--- ./src/polkit/polkitunixprocess.c.ori	2019-02-06 16:47:23.460666237 +0100
++++ ./src/polkit/polkitunixprocess.c	2019-02-06 16:47:43.846573792 +0100
+@@ -211,14 +211,9 @@ polkit_unix_process_set_property (GObjec
+       polkit_unix_process_set_pid (unix_process, g_value_get_int (value));
+       break;
+ 
+-    case PROP_UID: {
+-      gint val;
+-
+-      val = g_value_get_int (value);
+-      g_return_if_fail (val != -1);
+-      polkit_unix_process_set_uid (unix_process, val);
++    case PROP_UID:
++      polkit_unix_process_set_uid (unix_process, g_value_get_int (value));
+       break;
+-    }
+ 
+     case PROP_START_TIME:
+       polkit_unix_process_set_start_time (unix_process, g_value_get_uint64 (value));
