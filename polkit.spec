@@ -1,12 +1,12 @@
 # Only enable if using patches that touches configure.ac,
 # Makefile.am or other build system related files
 #
-%define enable_autoreconf 0
+%define enable_autoreconf 1
 
 Summary: An authorization framework
 Name: polkit
 Version: 0.112
-Release: 14%{?dist}
+Release: 18%{?dist}
 License: LGPLv2+
 URL: http://www.freedesktop.org/wiki/Software/polkit
 Source0: http://www.freedesktop.org/software/polkit/releases/%{name}-%{version}.tar.gz
@@ -25,6 +25,11 @@ Patch4: polkit-0.112-Polkit.spawn-leak.patch
 Patch5: polkit-0.112-agent-leaks.patch
 # https://bugs.freedesktop.org/show_bug.cgi?id=99741
 Patch6: polkit-0.112-polkitpermission-leak.patch
+Patch7: polkit-0.112-add-its-files.patch
+Patch8: polkit-0.112-spawning-zombie-processes.patch
+Patch9: polkit-0.112-bus-conn-msg-ssh.patch
+Patch10: polkit-0.112-pkttyagent-auth-errmsg-debug.patch
+
 Group: System Environment/Libraries
 BuildRequires: glib2-devel >= 2.30.0
 BuildRequires: expat-devel
@@ -98,6 +103,10 @@ Development documentation for polkit.
 %patch4 -p1 -b .Polkit.spawn-leak
 %patch5 -p1 -b .agent-leaks
 %patch6 -p1 -b .polkitpermission-leak.patch
+%patch7 -p1 -b .its-files.patch
+%patch8 -p1
+%patch9 -p1
+%patch10 -p1
 
 %build
 %if 0%{?enable_autoreconf}
@@ -180,12 +189,31 @@ fi
 %{_libdir}/pkgconfig/*.pc
 %{_datadir}/gir-1.0/*.gir
 %{_includedir}/*
+%{_datadir}/gettext/its/polkit.its
+%{_datadir}/gettext/its/polkit.loc
 
 %files docs
 %defattr(-,root,root,-)
 %{_datadir}/gtk-doc
 
 %changelog
+* Wed Aug 01 2018 Jan Rybar <jrybar@redhat.com> - 0.112-18
+- Error message about getting authority is too elaborate
+- Resolves: rhbz#1342855
+
+* Tue Jul 24 2018 Jan Rybar <jrybar@redhat.com> - 0.112-17
+- Bus disconnection report moved to debug mode
+- Resolves: rhbz#1249627
+
+* Mon Jul 23 2018 Jan Rybar <jrybar@redhat.com> - 0.112-16
+- polkit spawns zombie processes
+- Authored by kwalker@redhat.com
+- Resolves: rhbz#1570907
+
+* Thu May 31 2018 Jan Rybar <jrybar@redhat.com> - 0.112-15
+- Localization *its* files required by newest Gnome Shell packages
+- Resolves: rhbz#1584533
+
 * Tue Sep 19 2017 Yaakov Selkowitz <yselkowi@redhat.com> - 0.112-14
 - Rebuilt for mozjs17 48-bit VA on aarch64
   Resolves: #1436518

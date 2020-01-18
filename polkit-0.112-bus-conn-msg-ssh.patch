@@ -1,0 +1,60 @@
+From 0ce0a7b3298d7b0fd5ce8c6775bcef9b0caf1bdb Mon Sep 17 00:00:00 2001
+From: David Herrmann <dh.herrmann@gmail.com>
+Date: Wed, 4 Jul 2018 13:51:24 +0200
+Subject: [PATCH] polkitagent: suppress disconnect messages
+
+The polkitagent may be used by pkexec and friends. These might very
+well survive until very late during system shutdown. Hence, a
+disconnect of polkitd during runtime might be expected [1].
+
+This patch silences the disconnect/reconnect messages and turns them
+into debug messages. This only affects the polkit-agent, it does not
+affect the polkit-daemon implementation.
+
+[1] https://bugzilla.redhat.com/show_bug.cgi?id=1249627
+---
+ src/polkitagent/polkitagentlistener.c | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/src/polkitagent/polkitagentlistener.c b/src/polkitagent/polkitagentlistener.c
+index debd1bb..1c8b666 100644
+--- a/src/polkitagent/polkitagentlistener.c
++++ b/src/polkitagent/polkitagentlistener.c
+@@ -178,10 +178,10 @@ on_notify_authority_owner (GObject    *object,
+   owner = polkit_authority_get_owner (server->authority);
+   if (owner == NULL)
+     {
+-      g_printerr ("PolicyKit daemon disconnected from the bus.\n");
++      g_debug ("PolicyKit daemon disconnected from the bus.\n");
+ 
+       if (server->is_registered)
+-        g_printerr ("We are no longer a registered authentication agent.\n");
++        g_debug ("We are no longer a registered authentication agent.\n");
+ 
+       server->is_registered = FALSE;
+     }
+@@ -192,17 +192,17 @@ on_notify_authority_owner (GObject    *object,
+         {
+           GError *error;
+ 
+-          g_printerr ("PolicyKit daemon reconnected to bus.\n");
+-          g_printerr ("Attempting to re-register as an authentication agent.\n");
++          g_debug ("PolicyKit daemon reconnected to bus.\n");
++          g_debug ("Attempting to re-register as an authentication agent.\n");
+ 
+           error = NULL;
+           if (server_register (server, &error))
+             {
+-              g_printerr ("We are now a registered authentication agent.\n");
++              g_debug ("We are now a registered authentication agent.\n");
+             }
+           else
+             {
+-              g_printerr ("Failed to register as an authentication agent: %s\n", error->message);
++              g_debug ("Failed to register as an authentication agent: %s\n", error->message);
+               g_error_free (error);
+             }
+         }
+-- 
+2.18.0
+

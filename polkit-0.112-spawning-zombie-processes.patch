@@ -1,0 +1,181 @@
+From a028743f5c88dd7c27c102c34535f25b42ea2c5f Mon Sep 17 00:00:00 2001
+From: Kyle Walker <kwalker@redhat.com>
+Date: Mon, 23 Apr 2018 13:07:37 -0400
+Subject: [PATCH] Backport of:
+ https://bugs.freedesktop.org/attachment.cgi?id=138819
+
+Signed-off-by: Kyle Walker <kwalker@redhat.com>
+---
+ src/polkitbackend/polkitbackendjsauthority.c | 76 +++++++++++++++++++++++++++-
+ 1 file changed, 74 insertions(+), 2 deletions(-)
+
+diff --git a/src/polkitbackend/polkitbackendjsauthority.c b/src/polkitbackend/polkitbackendjsauthority.c
+index 39ed718..fd1dbfd 100644
+--- a/src/polkitbackend/polkitbackendjsauthority.c
++++ b/src/polkitbackend/polkitbackendjsauthority.c
+@@ -83,6 +83,13 @@ struct _PolkitBackendJsAuthorityPrivate
+   GMutex rkt_timeout_pending_mutex;
+   gboolean rkt_timeout_pending;
+ 
++  /* avoid zombies by reap child in a new thread */
++  GThread *child_reaper_thread;
++  GMutex crt_init_mutex;
++  GCond crt_init_cond;
++  GMainContext *crt_context;
++  GMainLoop *crt_loop;
++
+   /* A list of JSObject instances */
+   GList *scripts;
+ };
+@@ -124,6 +131,7 @@ enum
+ /* ---------------------------------------------------------------------------------------------------- */
+ 
+ static gpointer runaway_killer_thread_func (gpointer user_data);
++static gpointer child_reaper_thread_func (gpointer user_data);
+ 
+ static GList *polkit_backend_js_authority_get_admin_auth_identities (PolkitBackendInteractiveAuthority *authority,
+                                                                      PolkitSubject                     *caller,
+@@ -461,6 +469,18 @@ polkit_backend_js_authority_constructed (GObject *object)
+   PolkitBackendJsAuthority *authority = POLKIT_BACKEND_JS_AUTHORITY (object);
+   gboolean entered_request = FALSE;
+ 
++  g_mutex_init (&authority->priv->crt_init_mutex);
++  g_cond_init (&authority->priv->crt_init_cond);
++
++  authority->priv->child_reaper_thread = g_thread_new ("reap-child-thread",
++                                                       child_reaper_thread_func,
++                                                       authority);
++  /* wait for child_reaper_thread to set up its GMainContext */
++  g_mutex_lock (&authority->priv->crt_init_mutex);
++  while (authority->priv->crt_context == NULL)
++    g_cond_wait (&authority->priv->crt_init_cond, &authority->priv->crt_init_mutex);
++  g_mutex_unlock (&authority->priv->crt_init_mutex);
++
+   authority->priv->rt = JS_NewRuntime (8L * 1024L * 1024L);
+   if (authority->priv->rt == NULL)
+     goto fail;
+@@ -585,6 +605,15 @@ polkit_backend_js_authority_finalize (GObject *object)
+   g_free (authority->priv->dir_monitors);
+   g_strfreev (authority->priv->rules_dirs);
+ 
++  g_mutex_clear (&authority->priv->crt_init_mutex);
++  g_cond_clear (&authority->priv->crt_init_cond);
++
++  /* shut down the child reaper thread */
++  g_assert (authority->priv->crt_loop != NULL);
++  g_main_loop_quit (authority->priv->crt_loop);
++  g_thread_join (authority->priv->child_reaper_thread);
++  g_assert (authority->priv->crt_loop == NULL);
++
+   JS_BeginRequest (authority->priv->cx);
+   JS_RemoveObjectRoot (authority->priv->cx, &authority->priv->js_polkit);
+   JS_RemoveObjectRoot (authority->priv->cx, &authority->priv->js_global);
+@@ -1360,6 +1389,7 @@ get_signal_name (gint signal_number)
+ 
+ typedef struct
+ {
++  PolkitBackendJsAuthority *authority;
+   GMainLoop *loop;
+   GAsyncResult *res;
+ } SpawnData;
+@@ -1379,7 +1409,7 @@ js_polkit_spawn (JSContext  *cx,
+                  unsigned    js_argc,
+                  jsval      *vp)
+ {
+-  /* PolkitBackendJsAuthority *authority = POLKIT_BACKEND_JS_AUTHORITY (JS_GetContextPrivate (cx)); */
++  PolkitBackendJsAuthority *authority = POLKIT_BACKEND_JS_AUTHORITY (JS_GetContextPrivate (cx));
+   JSBool ret = JS_FALSE;
+   JSObject *array_object;
+   gchar *standard_output = NULL;
+@@ -1424,6 +1454,8 @@ js_polkit_spawn (JSContext  *cx,
+       JS_free (cx, s);
+     }
+ 
++  data.authority = authority;
++
+   context = g_main_context_new ();
+   loop = g_main_loop_new (context, FALSE);
+ 
+@@ -1540,6 +1572,8 @@ js_polkit_user_is_in_netgroup (JSContext  *cx,
+ 
+ typedef struct
+ {
++  PolkitBackendJsAuthority *authority;
++
+   GSimpleAsyncResult *simple; /* borrowed reference */
+   GMainContext *main_context; /* may be NULL */
+ 
+@@ -1572,11 +1606,43 @@ utils_child_watch_from_release_cb (GPid     pid,
+                                    gint     status,
+                                    gpointer user_data)
+ {
++  g_print("Child(pid: %d) has been reaped!\n", pid);
++}
++
++/* ---------------------------------------------------------------------------------------------------- */
++
++static gpointer
++child_reaper_thread_func (gpointer user_data)
++{
++  PolkitBackendJsAuthority *authority = POLKIT_BACKEND_JS_AUTHORITY (user_data);
++
++  g_mutex_lock (&authority->priv->crt_init_mutex);
++
++  authority->priv->crt_context = g_main_context_new ();
++  authority->priv->crt_loop = g_main_loop_new (authority->priv->crt_context, FALSE);
++  g_main_context_push_thread_default (authority->priv->crt_context);
++
++  /* Signal the main thread that we're done constructing */
++  g_cond_signal (&authority->priv->crt_init_cond);
++  g_mutex_unlock (&authority->priv->crt_init_mutex);
++
++  g_main_loop_run (authority->priv->crt_loop);
++
++  g_main_context_pop_thread_default (authority->priv->crt_context);
++
++  g_main_loop_unref (authority->priv->crt_loop);
++  authority->priv->crt_loop = NULL;
++  g_main_context_unref (authority->priv->crt_context);
++  authority->priv->crt_context = NULL;
++
++  return NULL;
+ }
+ 
++/* ---------------------------------------------------------------------------------------------------- */
+ static void
+ utils_spawn_data_free (UtilsSpawnData *data)
+ {
++  PolkitBackendJsAuthority *authority = data->authority;
+   if (data->timeout_source != NULL)
+     {
+       g_source_destroy (data->timeout_source);
+@@ -1604,12 +1670,17 @@ utils_spawn_data_free (UtilsSpawnData *data)
+        * Avoid taking a references to ourselves. but note that we need
+        * to pass the GSource so we can nuke it once handled.
+        */
++
++      /* avoid zombies by reaping child in a new thread
++       * add source to reap thread context
++       */
++      GMainContext *reap_context = authority->priv->crt_context;
+       source = g_child_watch_source_new (data->child_pid);
+       g_source_set_callback (source,
+                              (GSourceFunc) utils_child_watch_from_release_cb,
+                              source,
+                              (GDestroyNotify) g_source_destroy);
+-      g_source_attach (source, data->main_context);
++      g_source_attach (source, reap_context);
+       g_source_unref (source);
+       data->child_pid = 0;
+     }
+@@ -1776,6 +1847,7 @@ utils_spawn (const gchar *const  *argv,
+   GError *error;
+ 
+   data = g_slice_new0 (UtilsSpawnData);
++  data->authority = ((SpawnData *)user_data)->authority;
+   data->timeout_seconds = timeout_seconds;
+   data->simple = g_simple_async_result_new (NULL,
+                                             callback,
+-- 
+2.14.3
+
